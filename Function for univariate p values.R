@@ -26,6 +26,7 @@ plot.bonf = -log(bonferroni.cutoff)
 abline(h=plot.bonf, col = 'red')
 
 #Hochberg----
+#bonferoni etcx.
 
 
 
