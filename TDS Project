@@ -1,6 +1,14 @@
 #24 / 1/ 2020 : UPDATE. 
 #This is the code with some stuff for preprocessing.
 
+#We will go thorugh the first Aim (Univariate analyses)
+
+#Rebecca: Protein + Covars
+
+#Tarana: Adductomics + Covars
+
+#Vasilis: Metabolomics + Covars
+
 
 setwd('/rds/general/project/hda_tds/live/Mechanomics')
 
