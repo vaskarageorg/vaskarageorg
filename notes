@@ -1,0 +1,55 @@
+Q's for Barbara
+
+1. dimensions for adduct show that there are 398 individuals != ~700 of protein and metabol
+
+2. For quantile regression imputation, I have found the miWQS package.
+It uses 'univariate bayesian imputation' based on the detectable limits.
+
+	2a) Is this ok? SHould we impute all these in eveey single dataset one at a time
+		or make a mega-dataset with all omics in 1 and	_then_ impute?
+	2b) What are the detectable limits? Taking the minimum of the range? We could pass
+		the minimum observed value of each metabolite as the DL but this is not
+		100% true. It is also highly variable among assays (0-400).
+not the case in clustering. we dont need indeependent 
+
+----------------
+For Aim 1, case/ control status as an outcome in a logistic regression
+
+
+
+For MI
+Good idea to combine them all for the imputation.
+
+Might need to check if we have the same n of observations.
+
+If the sample size is different, we apply MI to the intersection
+BUT we will be losing data. SO impute metabolomics + protein together
+AND adductomics separately.
+
+FOr metabolomics data, missingnes is because metabolites are in very small
+concentrations. FIRSTLY, remove samples for whom missingness is >60%.
+
+
+For detectable limit, We DO NOT TAKE THE SMALLEST OBSERVED VALUE. 
+TAKE THE SMALLEST VALUE AND DIVIDE BY SQRT(2).
+
+WE DO NOT NEED TO DO THIS IN imputeLCMD
+
+------------------------
+For univariate, 1 variable (eg. 1 protein)
+For multivariate, all of the proteins in 1 model. Multicollinearity 
+as it is not invertible. penalised models (partial least squares).
+
+First, easy analysis to use all samples, OUTCOME CANCER OR NOT.
+
+
+For each OMIC, a list of significant variables afte 1st aim.
+IN THE SECOND AIM, ONLY FOR THE SIGNIFICANT ONES, CLUSTERING ON THE
+VARIABLES. NO INFORMATION FROM COVARS DATASET INITIALLY, MAYBE LATER.
+
+For ROC curves, compare protein, mtb, adduct, prt+mtb+adduct
+
+
+For cluster analysis, https://www.datacamp.com/courses/cluster-analysis-in-r
+
+
