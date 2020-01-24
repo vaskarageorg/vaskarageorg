@@ -1,0 +1,126 @@
+#24 / 1/ 2020 : UPDATE. 
+#This is the code with some stuff for preprocessing.
+
+
+setwd('/rds/general/project/hda_tds/live/Mechanomics')
+
+
+## OMICS datasets----------
+metabol <- read.csv(file.choose())
+covar <- readRDS('Covariates.rds')
+protein <- readRDS('Proteins/Proteins.rds')
+adduct <- readRDS('Adductomics/Adductomics_imputed.rds')
+
+
+#How do we identify the same people in all datasets?----
+
+#We clean the ID column so that it's the same
+library(stringr)
+rowprot <- rownames(protein)
+
+#We rename the "blahblahblha_ID_1" to "ID.1"
+rowadd <- rownames(adduct)
+rowadd.clean <- gsub("_1$",".1",rowadd)
+rowadd.clean <- gsub("_2$",".2",rowadd.clean)
+rowadd.fin <- gsub(".*_","",rowadd.clean)
+
+
+metabol2 <- metabol[, 18:667]
+rowmetabol <- colnames(metabol2)
+rowmetabol.clean <- gsub("_1$",".1",rowmetabol)
+rowmetabol.clean <- gsub("_2$",".2",rowmetabol.clean)
+rowmetabol.fin <- gsub(".*_","",rowmetabol.clean)
+
+rowprot <- rownames(protein)
+rowprot.clean <- gsub("_1$",".1",rowprot)
+rowprot.clean <- gsub("_2$",".2",rowprot.clean)
+rowprot.fin <- gsub(".*_","",rowprot.clean)
+
+#Renaming rows with the preprocessed homogeneous names
+rownames(protein) = rowprot.fin
+
+colnames(metabol2) = rowmetabol.fin
+
+
+#Vector with an indication of whether it is a second measurement
+rownames(protein)
+protein$double.measure = ifelse(str_length(rownames(protein)) == 9, 1, 0)
+
+#ID Column where only the ID is reported. This will be used for joining
+protein$ID = ifelse(str_length(rownames(protein)) == 9, str_sub(rownames(protein),-9,-3), rownames(protein))
+
+
+#Single-OMICS analyses----
+
+#Function to extract p values from univariate approach
+linearmod = function(y.dependent, x.indep){
+  mod1 = lm(y.dependent ~ x.indep)
+  summa = summary(mod1)
+  return(summa$coefficients[2,4])
+}
+
+
+lm(covar$smok_duration ~ protein.df$IL8[protein.df$double.measure == 0])
+
+covar$smok_duration
+
+
+
+#1. To link the covars with the data, 
+
+#2. Chips and Positions and how the measurement technicalities affected the results.
+#We should check that it's not too high and find ways to remove it.
+
+#For Imputation, please use impute.QRILC() from the R package imputeLCMD
+
+
+#-----------------------------------------------
+
+#First bullet: What are the outcomes? Should smoking be a confoudner? SHould there be a model
+#             with all of the OMICS as independent predictors? Variable selection (PCA)? 
+
+
+#Other ideas: SUrvival analysis with status variable derived from subtype == NA
+#
+
+
+#Avergage of measurements from duplicate.
+
+
+#Patterns of missingness. Run the analysis with coding specifically the missingness as a binary outcome (Vasilis)
+
+#Is there a data dictionary that we could get some ffeedback on what each variable means? (We should ask Barbara)
+
+#How do we deal with multiple measurements from the same person? Rebecca please look into how we could incorporate
+#multiple observations from the same participant? Suppose we have 2 measurements of protein from the same patient,
+#what could we do?
+
+#RQ: ---- We can try formulating some hypotheses in the format of H0, H1:...
+
+#
+
+# For clustering, will we have to include both cases and controls?
+
+# Group penalisation: what is it? how does it affect our analysis? is it related to multicollinearity?
+
+
+
+
+## NA's investigation =====
+
+
+#We look at the proportion of NA for each meatbolite. Some are missing 90% so we DROP them.
+#So remove them if 10% or not. COuld be lower as we want to be less stringent.
+
+# ...Q... Quantile regression is developped for metabolites so we hsould impute with this method in our
+# metabol.
+
+
+# ...A... What is the DL
+
+
+#Write a code for a small dataset and make sure it runs
+
+#WHat are B in the covar dataset?
+#Should we exclude participants with extreme values in the blood test? eg. Neutrophils 0.2- *0.9*
+
