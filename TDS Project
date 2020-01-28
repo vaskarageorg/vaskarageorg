@@ -1,3 +1,9 @@
+#28 / 1/ 2020 : UPDATE
+
+# Let's work on this as reference.
+
+# What I've done is in the headers. Basically, it's imputation, univariate regression with correction for metabolomics.
+
 #24 / 1/ 2020 : UPDATE. 
 #This is the code with some stuff for preprocessing.
 
@@ -9,126 +15,289 @@
 
 #Vasilis: Metabolomics + Covars
 
+# Metabolome Script
 
-setwd('/rds/general/project/hda_tds/live/Mechanomics')
-
-
-## OMICS datasets----------
-metabol <- read.csv(file.choose())
+# Load Files, Missingness Investigation----
 covar <- readRDS('Covariates.rds')
-protein <- readRDS('Proteins/Proteins.rds')
-adduct <- readRDS('Adductomics/Adductomics_imputed.rds')
+
+#Relevelling Gel Status so that NA is a value. OK's are '1', Gel's are '2', NA's are 'Missing'
+covar$Gel.status = ifelse(is.na(covar$Gel.status), 'Missing', covar$Gel.status)
+
+mtb = read.csv("/rdsgpfs/general/project/hda_tds/live/Mechanomics/Metabolites/Lung cancer feature table RP NEG_231019.csv")
+
+mtb.by.participant = t(as.matrix(mtb))
 
 
-#How do we identify the same people in all datasets?----
-
-#We clean the ID column so that it's the same
+#We fix the ID's of participants in mtb and covar datasets so that we can later join the two sets.
 library(stringr)
-rowprot <- rownames(protein)
 
-#We rename the "blahblahblha_ID_1" to "ID.1"
-rowadd <- rownames(adduct)
-rowadd.clean <- gsub("_1$",".1",rowadd)
-rowadd.clean <- gsub("_2$",".2",rowadd.clean)
-rowadd.fin <- gsub(".*_","",rowadd.clean)
-
-
-metabol2 <- metabol[, 18:667]
-rowmetabol <- colnames(metabol2)
+rowmetabol <- rownames(mtb.by.participant)
 rowmetabol.clean <- gsub("_1$",".1",rowmetabol)
 rowmetabol.clean <- gsub("_2$",".2",rowmetabol.clean)
 rowmetabol.fin <- gsub(".*_","",rowmetabol.clean)
+rownames(mtb.by.participant) <- rowmetabol.fin
 
-rowprot <- rownames(protein)
-rowprot.clean <- gsub("_1$",".1",rowprot)
-rowprot.clean <- gsub("_2$",".2",rowprot.clean)
-rowprot.fin <- gsub(".*_","",rowprot.clean)
+# Excluding 17 blanks in the mtb.by.paricipant dataset
+mtb.by.part = mtb.by.participant[18:667,]
 
-#Renaming rows with the preprocessed homogeneous names
-rownames(protein) = rowprot.fin
+names.covariates = sort(as.numeric(rownames(covar)))
+names.metabol = sort(as.numeric(rownames(mtb.by.part)))
+(names.covariates == names.metabol)
+#THere is a discrepancy at position [295]. Namely, there is an extra ID of 2103767 in metabol dataset
+names.covariates[295]
+names.metabol[295]
 
-colnames(metabol2) = rowmetabol.fin
+#We look further to find the other discrepancy
+names.covariates.plus295 = names.covariates[295:648]
+names.metabol.plus295 = names.metabol[296:650]
+names.covariates.plus295 == names.metabol.plus295
+
+# One More in position 47
+names.covariates.plus295[48]
+names.metabol.plus295[48]
+
+# The extra ID is 2106943. SO, IN THE MTB dataset, there are 2 MEASUREMENTS for 2 ID's,
+# Namely: 2106943, 2103767. We can either take the mean or use mixed models. 
+
+# For these 2 observations, to reduce complexity,
+# and since it's only 2/650 observations, we'll take the mean wherever there are 2 observations and
+# the observed value where one of them is NA
+
+length(mtb.by.part[rownames(mtb.by.part) == 2106943])
+length(mtb.by.part[rownames(mtb.by.part) == 2103767])
+
+vector.2106943 = matrix(as.numeric(mtb.by.part[rownames(mtb.by.part) == 2106943,]), byrow = F, nrow = 2)
+vector.2106943[1:2, 120:130]
+
+vec1 = as.data.frame(vector.2106943)
+vec1.3 = ifelse(is.na(vec1[1,1:4828]) | is.na(vec1[2,1:4828]), 1,0 )
+vec.all = rbind(vec1, vec1.3)
+vec.all[is.na(vec.all)] <- 0
+
+# Probably not the fastest way but still works. Wherever there is 1 NA, we take the value. WHerevere both
+# observations are available, we take the mean. NA's are changed to 0's for facilitating code
+
+mean.or.NA = ifelse(vec.all[3,] == 0, (vec.all[1,] + vec.all[2,])/2, vec.all[,1] +  vec.all[2,])
+meanNA2106943 = unlist(mean.or.NA)
+meanNA2106943[meanNA2106943 == 0] <- NA
+mtb.by.part2 = rbind(mtb.by.part, meanNA2106943)
+
+#Dropping the other rows
+drop.index.2106943 = which(rownames(mtb.by.part2) == "2106943")
+mtb.by.part2 = mtb.by.part2[-drop.index.2106943,]
+dim(mtb.by.part2)
+
+# The same process for ID 2103767. rownames(mtb.by.part2) lathos
+vector.2103767 = matrix(as.numeric(mtb.by.part2[rownames(mtb.by.part2) == 2103767,]), byrow = F, nrow = 2)
+vector.2103767[1:2, 120:130]
+
+vec1 = as.data.frame(vector.2103767)
+vec1.3 = ifelse(is.na(vec1[1,1:4828]) | is.na(vec1[2,1:4828]), 1,0 )
+vec.all = rbind(vec1, vec1.3)
+vec.all[is.na(vec.all)] <- 0
+
+# Probably not the fastest way but still works. Wherever there is 1 NA, we take the value. WHerevere both
+# observations are available, we take the mean. NA's are changed to 0's for facilitating code
+
+mean.or.NA = ifelse(vec.all[3,] == 0, (vec.all[1,] + vec.all[2,])/2, vec.all[,1] +  vec.all[2,])
+meanNA2103767 = unlist(mean.or.NA)
+meanNA2103767[meanNA2103767 == 0] <- NA
+mtb.by.part3 = rbind(mtb.by.part2, meanNA2103767)
+
+#Dropping the other rows
+drop.index.2103767 = which(rownames(mtb.by.part3) == "2103767")
+mtb.by.part3 = mtb.by.part3[-drop.index.2103767,]
+dim(mtb.by.part3)
+
+#648, now they match with covars
+
+# Firstly, we will be excluding those metabolites for whom >70% of the values are missing
+mtb.NAs = ifelse(is.na(mtb.by.part3) == T, 1, 0)
+
+na.proportion.vector = apply(mtb.NAs, 1, mean)
+
+hist(na.proportion.vector,breaks = 1000)
+# DATA-DRIVEN choice of cut-off: 0.65
+
+mtb.lessthan60 = mtb.by.part3[which(na.proportion.vector < 0.6),]
+dim(mtb.lessthan65)
+  
+# In the remaining dataset, we will be treating missing or not as a binary outcome 
+# 
+# and run logistic regression as follows: missingness ~ age + gender + BMI + ...
+#
+# We will accordingly correct for multiple comparisons
+linearmod.NAs = function(metabolite.missing){
+  mod1 = glm(metabolite.missing ~ covar$age.sample + covar$case + covar$cohort ,
+             family = binomial())
+  summa = summary(mod1)
+  age.pval = summa$coefficients[2,4]
+  ccstatus.pval = summa$coefficients[3,4]
+  cohort.pval = summa$coefficients[4,4]
+  df.pval = data.frame(summa$coefficients[2,4], summa$coefficients[3,4], summa$coefficients[4,4])
+  colnames(df.pval) = NULL
+  return(df.pval)
+  
+}
+
+pval = apply(mtb.NAs, 2, linearmod.NAs)
+pvalues = matrix(unlist(pval), nrow = ncol(mtb.NAs), ncol = 3,byrow = T)
+apply(pvalues, 2, function(x){min(p.adjust(x, method = 'BH'))})
+
+# Imputation----
+# Strategy: "QRILC, a missing data imputation method that performs the imputation
+# of left-censored missing data using random draws from a truncated distribution with parameters
+# estimated using quantile regression"
+install.packages("BiocManager")
+library(BiocManager)
+BiocManager::install("pcaMethods")
+library(pcaMethods)
+BiocManager::install("impute")
+library(impute)
+
+install.packages('imputeLCMD')
+library(imputeLCMD)
+
+#We ASSUME that the data is NOT log-transformed
+
+mtb.numeric = matrix(as.numeric(mtb.by.part3), nrow(mtb.by.part3))
+
+num.mat.1 = mtb.numeric
+num.mat.ln = log(num.mat.1)
+
+imp.mtb = impute.QRILC(mtb.numeric)
+# Errors produced, "In qnorm((pNAs + 0.001), mean = mean.CDD, sd = sd.CDD) : NaNs produced"
+#
+# We get the source code and try to see what's going on. 
+
+#The issue was that nFeatures and nSamples were switched
+
+tune.sigma = 1
+nFeatures = dim(num.mat)[2]
+nSamples = dim(num.mat)[1]
+dataSet.imputed = num.mat
+QR.obj = list()
+for (i in 1:(nSamples)) {
+  curr.sample = num.mat.ln[i, ]
+  pNAs = length(which(is.na(curr.sample)))/length(curr.sample)
+  upper.q = 0.99
+  q.normal = qnorm(seq((pNAs + 0.001), (upper.q + 0.001),(upper.q - pNAs)/(upper.q * 100)), mean = 0, sd = 1)
+  q.curr.sample = quantile(curr.sample, probs = seq(0.001, 
+                                                    (upper.q + 0.001), 0.01), na.rm = T)
+  temp.QR = lm(q.curr.sample ~ q.normal)
+  QR.obj[[i]] = temp.QR
+  mean.CDD = temp.QR$coefficients[1]
+  sd.CDD = as.numeric(temp.QR$coefficients[2])
+  data.to.imp = rtmvnorm(n = nFeatures, mean = mean.CDD, 
+                         sigma = sd.CDD * tune.sigma, upper = qnorm((pNAs+0.001), mean = mean.CDD, sd = sd.CDD), algorithm = c("gibbs"))
+  curr.sample.imputed = curr.sample
+  curr.sample.imputed[which(is.na(curr.sample))] = data.to.imp[which(is.na(curr.sample))]
+  dataSet.imputed[i, ] = curr.sample.imputed
+}
+
+num.mat.imputed = dataSet.imputed
+
+# Visual inspection of histograms suggests that undetected values
+# have been imputed at low ranges. 
+hist(num.mat.imputed[,48],breaks = 100)
+hist(num.mat[,48],breaks = 100)
+
+#We backtransform to linear scale
+metabolites.imp = exp(num.mat.imputed)
+range(as.numeric(mtb.by.part3[,26]),na.rm = T)
 
 
-#Vector with an indication of whether it is a second measurement
-rownames(protein)
-protein$double.measure = ifelse(str_length(rownames(protein)) == 9, 1, 0)
+# Univariate Regression with significance corrections ----
+metabolites.imp
 
-#ID Column where only the ID is reported. This will be used for joining
-protein$ID = ifelse(str_length(rownames(protein)) == 9, str_sub(rownames(protein),-9,-3), rownames(protein))
+# Treating lung cancer cases as the binary outcome, we code a function (linearmod) that sequentially checks
+# every metabolite for significance
 
-
-#Single-OMICS analyses----
-
-#Function to extract p values from univariate approach
-linearmod = function(y.dependent, x.indep){
-  mod1 = lm(y.dependent ~ x.indep)
+linearmod = function(x.indep){
+  mod1 = glm(as.numeric(covar[, "case"]) ~ x.indep, family = binomial())
   summa = summary(mod1)
   return(summa$coefficients[2,4])
 }
 
+#Extraction of p-values for all the univariate analyses
+#of cancer ~ metabolite1, cancer ~ metabolite2 etc.
 
-lm(covar$smok_duration ~ protein.df$IL8[protein.df$double.measure == 0])
+pvalues = apply(metabolites.imp, 2, linearmod)
+pval.log = -log(pvalues)/log(10)
+plot(pval.log,ylim = c(0,4))
 
-covar$smok_duration
+#Bonferroni correction
+bonferroni.cutoff = 0.05/ncol(metabolites.imp)
+plot.bonf = -log(bonferroni.cutoff)
+abline(h=plot.bonf, col = 'red')
+
+#Benjamini-Hochberg Procedure
+pval.BH = p.adjust(pvalues, method = "BH") # None significant at 0.05
+
+sum(pval.BH < 0.05) # NONE !!!!
+range(pval.BH) # W O W. Range of BH-corrected pvals is 0.9896816 0.9997920
+
+#Let's try adjusting for Smoking Status
+linearmod.adj.for.Smoking = function(x.indep){
+  mod1 = glm(as.numeric(covar[, "case"]) ~ x.indep + covar$smoking_status, family = binomial())
+  summa = summary(mod1)
+  return(summa$coefficients[2,4])
+}
+
+#Again, pvalue extraction
+pvalues = apply(metabolites.imp, 2, linearmod.adj.for.Smoking)
+pval.log = -log(pvalues)/log(10)
+plot(pval.log,ylim = c(0,4))
+
+#Bonferroni correction
+bonferroni.cutoff = 0.05/ncol(metabolites.imp)
+plot.bonf = -log(bonferroni.cutoff)
+abline(h=plot.bonf, col = 'red')
+
+#Benjamini-Hochberg Procedure
+pval.BH = p.adjust(pvalues, method = "BH") # None significant at 0.05
+
+sum(pval.BH < 0.05) # NONE AGAIN !!!!
+range(pval.BH) # Range of BH-corrected pvals is now 0.9529 0.9997920
+
+#Let's try adjusting for Smoking Duration AND age 
+linearmod.adj.for.Smoking = function(x.indep){
+  mod1 = glm(as.numeric(covar[, "case"]) ~ x.indep + covar$packyears + covar$Monocytes + covar$bmi + covar$B+covar$Gel.status, family = binomial())
+  summa = summary(mod1)
+  return(summa$coefficients[2,4])
+}
+
+#Again, pvalue extraction
+pvalues = apply(metabolites.imp, 2, linearmod.adj.for.Smoking)
+pval.log = -log(pvalues)/log(10)
+plot(pval.log,ylim = c(0,4))
+
+#Bonferroni correction
+bonferroni.cutoff = 0.05/ncol(metabolites.imp)
+plot.bonf = -log(bonferroni.cutoff)
+abline(h=plot.bonf, col = 'red')
+
+#Benjamini-Hochberg Procedure
+pval.BH = p.adjust(pvalues, method = "BH") # None significant at 0.05
+
+sum(pval.BH < 0.05) # NONE AGAIN !!!!
+
+range(pval.BH) # Range of BH-corrected pvals is now ↓ 0.86855 0.9997920
 
 
 
-#1. To link the covars with the data, 
-
-#2. Chips and Positions and how the measurement technicalities affected the results.
-#We should check that it's not too high and find ways to remove it.
-
-#For Imputation, please use impute.QRILC() from the R package imputeLCMD
-
-
-#-----------------------------------------------
-
-#First bullet: What are the outcomes? Should smoking be a confoudner? SHould there be a model
-#             with all of the OMICS as independent predictors? Variable selection (PCA)? 
-
-
-#Other ideas: SUrvival analysis with status variable derived from subtype == NA
-#
-
-
-#Avergage of measurements from duplicate.
-
-
-#Patterns of missingness. Run the analysis with coding specifically the missingness as a binary outcome (Vasilis)
-
-#Is there a data dictionary that we could get some ffeedback on what each variable means? (We should ask Barbara)
-
-#How do we deal with multiple measurements from the same person? Rebecca please look into how we could incorporate
-#multiple observations from the same participant? Suppose we have 2 measurements of protein from the same patient,
-#what could we do?
-
-#RQ: ---- We can try formulating some hypotheses in the format of H0, H1:...
-
-#
-
-# For clustering, will we have to include both cases and controls?
-
-# Group penalisation: what is it? how does it affect our analysis? is it related to multicollinearity?
 
 
 
+# Multivariate Approaches ----
 
-## NA's investigation =====
+# 1. PCA
+mtb.pca = prcomp(metabolites.imp, center = T, scale. = T)
 
-
-#We look at the proportion of NA for each meatbolite. Some are missing 90% so we DROP them.
-#So remove them if 10% or not. COuld be lower as we want to be less stringent.
-
-# ...Q... Quantile regression is developped for metabolites so we hsould impute with this method in our
-# metabol.
+pca.numeric = unlist(mtb.pca[1])
+sum(pca.numeric[1:220]) / sum(pca.numeric)
 
 
-# ...A... What is the DL
+mtb.pca$rotation
 
-
-#Write a code for a small dataset and make sure it runs
-
-#WHat are B in the covar dataset?
-#Should we exclude participants with extreme values in the blood test? eg. Neutrophils 0.2- *0.9*
 
