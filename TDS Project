@@ -1,3 +1,17 @@
+# 31 / 1 / 2020
+
+# Work for next meeting: Univariate models of the form: 1. lm( Adductomics ~ cancer + age + gender ), 2. lm(Adductomics ~ cancer + age + gender + technical confounders)
+#                                                       3. ANOVA 2 VS 1, within this we keep the p value, I have some relevant code in liens 139+ for keeping the p value
+#                                                        from the model
+#                                                        lines 
+#                        PCA for every single dataset separately
+#                       Check what group penalisation means, we have to enter background knwoledge in a lasso regression, eg. inflammatory
+#                        proteins are associated with each other.
+#NOTES: Maybe we can add technical confounders as random effects: lmer package. eg. random effect (1 | chip)
+
+
+
+
 #28 / 1/ 2020 : UPDATE
 
 # Let's work on this as reference.
