@@ -24,6 +24,105 @@
 #We will go thorugh the first Aim (Univariate analyses)
 
 #Rebecca: Protein + Covars
+library(tidyverse)
+library(dplyr)
+library(stringr)
+library(reshape2)
+library(tidyr)
+library(devtools)
+# package for PCA
+library(FactoMineR)
+library(factoextra)
+library(ggbiplot)
+library(ggplot2)
+# package for iso forest
+library(solitude)
+# data preprocessing
+# drop rows with na
+proteins<-Proteins%>% drop_na()
+# create new col "ID"
+proteins$Indiv.ID <- row.names(proteins)
+#identify individuals with repeated measurement
+repeated<-proteins %>%filter(str_detect(Indiv.ID, "_2"))
+#manipulate ID string
+proteins$Indiv.ID<-str_sub(proteins$Indiv.ID, 1, 7)
+#group by ID and take avg for repeated measurement
+prot <- proteins %>%
+  group_by(Indiv.ID) %>%
+  summarize_each(funs(mean))
+# check the above code
+check<-proteins%>%filter(Indiv.ID==2101850 |Indiv.ID==	2112935)
+check_group<-df%>%filter(Indiv.ID==2101850 |Indiv.ID==	2112935)
+# cal correlation matrix
+cormat <- round(cor(prot),2)
+melted_cormat <- melt(cormat)
+head(melted_cormat)
+#plot correlation matrix
+ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + geom_tile()
+# get tri of the matrix
+get_lower_tri<-function(cormat){
+  cormat[upper.tri(cormat)] <- NA
+  return(cormat)
+}
+lower_tri <- get_lower_tri(cormat)
+lower_tri
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+head(melted_cormat)
+#sorted correlation values
+df_sorted<- melted_cormat[with(melted_cormat, order(value)), ]
+
+# select important features from Covariates
+features<-Covariates%>%select("Indiv.ID","case","age.sample","gender")
+# merge covar with proteomics
+join<-inner_join(features,prot)
+var<-join[,3:96]
+class<-join[,2]
+# conduct PCA analysis
+pca <- prcomp(var,
+                 center = TRUE,
+                 scale. = TRUE) 
+summary(pca)
+fviz_eig(pca)
+g <- ggbiplot(pca, obs.scale = 1, var.scale = 1, 
+              groups = class, ellipse = TRUE, 
+              circle = TRUE)
+g
+fviz_pca_ind(pca,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07")
+)
+fviz_pca_var(pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+           
+)
+# Eigenvalues
+eig.val <- get_eigenvalue(pca)
+eig.val
+res.ind <- get_pca_ind(pca)
+res.ind$coord          # Coordinates
+res.ind$contrib        # Contributions to the PCs
+res.ind$cos2           # Quality of representation
+# use first PC to identify outliers
+# results show around 32 outliers!!!!!
+# CHECK with tutors, I am not sure if my approach is correct!!
+# Did not find a tutorial on PCA outlier detection
+coord<-as.data.frame(res.ind$coord)
+dim<-coord[,1]
+out<-as.data.frame(dim)
+out$ID <- seq.int(nrow(out))
+outlier<-out%>%filter(dim>8)
+# another outlier detection approach called isolation forest
+# results show no outlier for proteomics!!!!!
+#score close to 1 means outlier, <0.5 means normal obs
+iso <- isolationForest$new()
+#proX <- Proteins[, setdiff(colnames(Proteins), "proteins")]
+prot_iso<-prot[,-1]
+iso$fit(df)
+print(iso$scores)
+# identify outliers by the distribution of score
+quantile(iso$scores$anomaly_score
+         , probs = seq(0, 1, length.out = 11))
 
 #Tarana: Adductomics + Covars
 
