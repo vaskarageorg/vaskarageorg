@@ -1,5 +1,5 @@
 # 31 / 1 / 2020
-
+NOTES--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # Work for next meeting: Univariate models of the form: 1. lm( Adductomics ~ cancer + age + gender ), 2. lm(Adductomics ~ cancer + age + gender + technical confounders)
 #                                                       3. ANOVA 2 VS 1, within this we keep the p value, I have some relevant code in liens 139+ for keeping the p value
 #                                                        from the model
@@ -23,7 +23,7 @@
 
 #We will go thorugh the first Aim (Univariate analyses)
 
-#Rebecca: Protein + Covars
+#Rebecca: Protein + Covars----------------------------------------------------------------------------------------------------
 library(tidyverse)
 library(dplyr)
 library(stringr)
@@ -124,9 +124,138 @@ print(iso$scores)
 quantile(iso$scores$anomaly_score
          , probs = seq(0, 1, length.out = 11))
 
-#Tarana: Adductomics + Covars
+#Tarana: Adductomics + Covars-------------------------------------------------------------------------------------------------
 
-#Vasilis: Metabolomics + Covars
+
+library(stringr)
+work_dir<- "/rds/general/user/tm2119/home/TDS_Session2"
+
+## Adductomics data cleaning
+adm<- readRDS('Adductomics/Adductomics_imputed.rds')
+adm
+
+dim(adm)
+
+row.adm <- rownames(adm)
+
+row.adm.clean <-gsub("_1$",".1",row.adm)
+row.adm.clean
+row.adm.clean <-gsub("_2$",".2",row.adm.clean)
+row.adm.clean
+row.adm.fin <-gsub(".*_","",row.adm.clean)
+row.adm.fin
+row.adm.fin<-str_sub(row.adm.fin,-20, -3)
+head(row.adm.fin)
+
+rownames(adm)<-row.adm.fin
+rownames(adm)
+
+#LOG TRANSFORM DATA FOR ADDUCTOMICS
+adm.log = log(adm)
+head(adm.log)
+dim(adm.log)
+
+
+#Average every two rows
+M <- matrix(unlist(c(adm.log)), ncol = 2, byrow = TRUE)
+M <- cbind(M, rowMeans(M))
+M <- matrix(c(t(M)),ncol = ncol(adm.log), byrow = FALSE)
+
+---------------# add row names and column names 
+row.names <- matrix(rownames(adm.log), ncol = 2 ,byrow = TRUE)
+rownames(M) <- c(t(cbind(row.names, apply(row.names,1, paste, collapse = "_"))))
+colnames(M) <- colnames(adm.log)
+rownames(M)
+#Create new dataframe only with mean values (an index from row 3 to nrow (number of rows of the table) every 3 rows). 
+M.new = M[seq(3, nrow(M), 3), ]
+
+#Since some samples has 2 duplicates(4 in total), hence we are averaging two means and deleting the rest of duplicates
+#In total would be 197 samples
+
+rownames(M.new)
+M.new.2466652.1<-M.new[157,]
+M.new.2466652.2<-M.new[158,]
+X2466652<-((M.new.2466652.1)+(M.new.2466652.2))/2
+M.new<-rbind(M.new,X2466652)
+
+
+#Drop the other two
+drop.2466652 <-M.new[-c(157),]
+M.new<-drop.2466652
+drop.2466652.1 <-M.new[-c(158),]
+M.new<-drop.2466652.1
+
+dim(M.new)
+
+tail(M.new)
+
+#Do the same for 2224825
+rownames(M.new)
+
+M.new.2224825.1<-M.new[32,]
+M.new.2224825.2<-M.new[33,]
+X2224825<-((M.new.2224825.1)+(M.new.2224825.2))/2
+
+M.new<-rbind(M.new,X2224825)
+
+#Drop the other two
+drop.2224825 <-M.new[-c(32),]
+M.new<-drop.2224825
+
+drop.2224825.1 <-M.new[-c(33),]
+M.new<-drop.2224825.1
+
+dim(M.new)
+
+tail(M.new)
+
+#Rename rows and make
+rownames(M.new)[197]<-"2224825_2224825"
+rownames(M.new)[197]
+
+rownames(M.new)[196]<-"2466652_2466652"
+rownames(M.new)
+
+sort(M.new)
+
+head(M.new)
+#Rename all rows. Samples now 197 and all named properly
+library(dplyr)
+row.M.new<-rownames(M.new)
+row.M.new<-substr(row.M.new, start=1, stop=7)
+row.M.new
+
+#Create column Indiv.ID that will match the same with covariates
+M.new<-cbind(Indiv.ID=row.M.new,M.new)
+head(M.new)
+rownames(M.new)<-M.new
+rownames(M.new)
+head(M.new)
+
+#Cleaning for Covariates
+covariates <- readRDS('Covariates.rds')
+covariates
+str(covariates$Indiv.ID)
+
+#Subset only those where Indiv.ID==7 characters
+covariates$Indiv.ID=as.character(covariates$Indiv.ID)
+covariates = covariates[(which(nchar(covariates$Indiv.ID) == 7)),]
+#Group two datasets by Indiv.ID and drop the rest.
+covariates$Indiv.ID=as.numeric(covariates$Indiv.ID)
+new_covariates<-covariates%>%filter(Indiv.ID>2220020&Indiv.ID<2470519)
+new_covariates
+dim(new_covariates)
+M.new=as.data.frame(M.new)
+
+#Join two datasets(adductomics+covariates) by Indiv.ID
+adm.covar <- join(M.new, new_covariates, by = c("Indiv.ID"))
+adm.covar
+dim(adm.covar)
+
+#UNIVARIATE LINEAR MODELS TO FOLLOW:
+
+
+#Vasilis: Metabolomics + Covars------------------------------------------------------------------------------------------------
 
 # Metabolome Script
 
