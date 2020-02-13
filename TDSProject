@@ -1,4 +1,199 @@
-# 31 / 1 / 2020
+#13th Feb 2020
+
+#CODE FOR ADDUCTOMICS WHEN INDIV.ID WAS NOT AVERAGED. -----------------------STILL MESSY/UPLOADED FOR REBECCA TO LOOK AT LINEAR MIXED MODELS
+library(stringr)
+work_dir<- "/rds/general/user/tm2119/home/TDS_Session2"
+
+## Adductomics-----
+adm<- readRDS('Adductomics/Adductomics_imputed.rds')
+adm<-as.data.frame(adm)
+outlier(adm, method="median", addthres=TRUE)
+str(adm)
+dim(adm)
+
+rownames(adm)
+row.adm <- rownames(adm)
+
+row.adm.clean <-gsub("_1$",".1",row.adm)
+row.adm.clean
+row.adm.clean <-gsub("_2$",".2",row.adm.clean)
+row.adm.clean
+row.adm.fin <-gsub(".*_","",row.adm.clean)
+row.adm.fin
+rownames(adm)<-row.adm.fin
+rownames(adm)
+rownames(adm)[65]<-"2224825.3"
+rownames(adm)[66]<-"2224825.4"
+rownames(adm)[314]<-"2466652.4"
+rownames(adm)[315]<-"2466652.3"
+rownames(adm)[389]<-"2470231.1"
+rownames(adm)[393]<-"2470381.2"
+rownames(adm)
+
+#Create column Indiv.ID
+adm.log <- cbind(Indiv.ID = rownames(adm.log),adm.log)
+adm.log
+
+
+
+
+
+#LOG TRANSFORM DATA FOR ADDUCTOMICS
+adm.log<-log(adm)
+is.matrix(adm.log)
+head(adm.log)
+str(adm.log)
+
+#Technical covariates data
+adm_tc <- readRDS("/rdsgpfs/general/project/hda_tds/live/Mechanomics/Adductomics/Adductomics_technical_covariates.rds")
+adm_tc
+
+
+row.adm.tc <- rownames(adm_tc)
+row.adm.clean.tc <-gsub("_1$",".1",row.adm.tc)
+row.adm.clean.tc
+row.adm.clean.tc <-gsub("_2$",".2",row.adm.clean.tc)
+row.adm.clean.tc
+row.adm.fin.tc <-gsub(".*_","",row.adm.clean.tc)
+row.adm.fin.tc
+row.adm.fin.tc[65]<-"2224825.3"
+row.adm.fin.tc[66]<-"2224825.4"
+row.adm.fin.tc[314]<-"2466652.4"
+row.adm.fin.tc[315]<-"2466652.3"
+row.adm.fin.tc[389]<-"2470231.1"
+row.adm.fin.tc[393]<-"2470381.2"
+row.adm.fin.tc
+rownames(adm_tc)<-row.adm.fin.tc
+rownames(adm_tc)
+dim(adm_tc)
+
+#Create Indiv.ID for adm_tc
+adm_tc<- cbind(Indiv.ID = rownames(adm_tc),adm_tc)
+dim(adm_tc)
+
+#Merge TWO datasets
+adm.log.tc<-merge(adm.log, adm_tc, by=c("Indiv.ID"))
+dim(adm.log.tc)
+table(is.na(adm.log.tc))
+str(adm.log.tc)
+
+#PCA Analysis
+pca.cov<-covariates%>%select("age.sample","storage_time","smok_intensity","CSI","bmi")
+pca.cov
+table(is.na(pca.cov))
+pca.cov=na.omit(pca.cov)
+table(is.na(pca.cov))
+numeric.adm<-adm[,1:43]
+#pca<-prcomp(pca.cov,center = TRUE, scale. = TRUE)
+#summary(pca)
+#pca%>%biplot(cex=.7)
+
+pca1<-prcomp(numeric.adm, center = TRUE, scale.=TRUE)
+summary(pca1)
+pca1$sdev^2
+print(pca1$rotation)
+pca1%>%biplot(cex=.6)
+
+#Deal with covariates
+install.packages("ggplot2")
+library(ggplot2)
+library(dplyr)
+cov<-covariates%>%select("Indiv.ID","gender","case","age.sample")
+cov
+
+#Create EPIC_ID in covariatesso we can join with adm.log.tc
+cov$EPIC_ID<-rownames(cov)
+head(cov)
+adm.log.tc1<-merge(adm.log.tc,cov,by=c("EPIC_ID"))
+adm.log.tc1
+
+# outlier detection and normalizing
+outlier_norm <- function(x){
+  qntile <- quantile(x, probs=c(.25, .75))
+  caps <- quantile(x, probs=c(.05, .95))
+  H <- 1.5 * IQR(x, na.rm = T)
+  x[x < (qntile[1] - H)] <- caps[1]
+  x[x > (qntile[2] + H)] <- caps[2]
+  return(x)
+}
+adm.log.tc1$age.sample=outlier_norm(adm.log.tc1$age.sample)
+
+ggplot(adm.log.tc1, mapping = aes(x = case, y = age.sample, fill = case)) + 
+  geom_boxplot(outlier.colour = "red", outlier.shape = 8, outlier.size = 4) + 
+  facet_wrap(~gender)
+
+
+#Mixed Models-----------------------------------------------------------------------------------
+install.packages("omics")
+suppressPackageStartupMessages(library(omics))
+
+#Build univariate model adm.only~case (2 models: 1st with all covariates, 2nd without covariates)
+
+adm.only <- adm.log[,1:43]
+
+model=lm(adm.only~case+Analytical.batch+gender+Extraction.batch+Gel.status+age.sample,data=adm.log.tc1)
+summary(model)
+
+
+model1=lm(adm.only~case,data=adm.log.tc1)
+summary(model1)
+
+anova(model,model1)
+
+
+
+
+adm.log.tc$Analytical.batch=as.factor(adm.log.tc$Analytical.batch)
+adm.log.tc$Extraction.batch=as.factor(adm.log.tc$Extraction.batch)
+
+#model<-lmer(adm.only~case+(case|Indiv.ID),adm.log.tc)
+#summary(model)
+
+
+adm.only <- adm.log[,1:43]
+str(adm.only)
+model2<-mlmer(adm.only~(1|Indiv.ID)+(1|Analytical.batch)+(1|Extraction.batch)+gender+case,var="case", data=adm.log.tc1)
+model2$coefficients
+plot(model2)
+
+#Univariate Model---------------------------------------------------------------------
+linearmod = function(x){
+  mod1 = glm(as.numeric(adm.log.tc1[, "case"]) ~ x, family = binomial())
+  summa = summary(mod1)
+  return(summa$coefficients[2,4])
+}
+
+
+#Extraction of p-values for all the univariate analyses
+pvalues = apply(adm, 2, linearmod)
+pval.log = -log(pvalues)/log(10)
+plot(pval.log,ylim = c(0,4))
+
+#PHEATMAP
+library(pheatmap)
+str(adm.only)
+adm.only=as.numeric(adm.only)
+mycor=cor(adm[,1:43], use="complete.obs")
+pheatmap(mycor, cluster_cols = FALSE, cluster_rows = FALSE, breaks = seq(-1,1, length.out = 100), show_rownames = FALSE, 
+         show_colnames = FALSE)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#31 / 1 / 2020
 NOTES--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 # Work for next meeting: Univariate models of the form: 1. lm( Adductomics ~ cancer + age + gender ), 2. lm(Adductomics ~ cancer + age + gender + technical confounders)
 #                                                       3. ANOVA 2 VS 1, within this we keep the p value, I have some relevant code in liens 139+ for keeping the p value
