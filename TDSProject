@@ -1,3 +1,19 @@
+#UNIVARIATE ANALYSIS
+model.mtb = mlmer(metabolites.only ~ case + age.sample + gender + (1 | merged.df$Plate),
+                  vars = 'case', data=merged.df, save.residuals = TRUE)
+
+view(model.mtb$coefficients)
+
+model.mtb$coefficients
+
+pvalues.from.univariate = model.mtb$coefficients[,3]
+hist(pvalues.from.univariate)
+
+pvalues = apply(metabolites.imp, 2, linearmod)
+pval.log = -log(pvalues)/log(10)
+plot(pval.log,ylim = c(0,6))
+
+
 #13th Feb 2020
 
 #CODE FOR ADDUCTOMICS WHEN INDIV.ID WAS NOT AVERAGED. -----------------------STILL MESSY/UPLOADED FOR REBECCA TO LOOK AT LINEAR MIXED MODELS
@@ -157,7 +173,8 @@ model2$coefficients
 plot(model2)
 
 #Univariate Model---------------------------------------------------------------------
-linearmod = function(x){
+
+#linearmod = function(x){
   mod1 = glm(as.numeric(adm.log.tc1[, "case"]) ~ x, family = binomial())
   summa = summary(mod1)
   return(summa$coefficients[2,4])
