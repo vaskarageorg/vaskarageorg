@@ -1,3 +1,23 @@
+
+#Lasso Model---- FOR VASILIS
+install.packages("glmnet")
+library(glmnet)
+
+X=readRDS("Adductomics/Adductomics_denoised.rds")
+head(X)
+X=as.data.frame(X)
+X<- cbind(Indiv.ID = rownames(X),X)
+X1<-X[,2:44]
+Y<-adm.log.tc1$case
+
+suppressPackageStartupMessages(library(glmnet))
+
+plot(density(Y), las = 1, main = "", xlab = "", ylab = "",
+     lwd = 2, col = "navy")
+model.lasso=cv.glmnet(X1,Y, alpha=1)
+plot(model.lasso)
+
+
 #UNIVARIATE ANALYSIS
 model.mtb = mlmer(metabolites.only ~ case + age.sample + gender + (1 | merged.df$Plate),
                   vars = 'case', data=merged.df, save.residuals = TRUE)
