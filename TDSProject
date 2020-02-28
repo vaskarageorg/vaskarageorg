@@ -1,3 +1,43 @@
+#LASSO CHOICE 28/2/2020
+foo = function(independent.variable.matrix){
+  p.values.for.uni = matrix(NA, nrow = ncol(independent.variable.matrix), ncol = 3)
+  for (i in 1:ncol(independent.variable.matrix)){
+  model.1 = glm(cases ~ independent.variable.matrix[,i] + mtb.tech.conf.and.covariates$CSI)
+  summary.1 = summary(model.1)
+  p.values.for.uni[i,1] = mtb.tech.conf.and.covariates$Sample.Name[i]
+  p.values.for.uni[i,2] = summary.1$coefficients[2,4]
+  p.values.for.uni[i,3] = summary.1$coefficients[2,3]}
+  return(p.values.for.uni)
+}
+
+univar.1 = foo(mtb.tech.conf.and.covariates[,1:2577])
+
+index.for.univariate.BF.significant = which(univar.1[,2] < 1.940241e-05)
+
+#Lasso----
+set.seed(1310000)
+
+library(glmnet)
+cases = as.numeric(mtb.tech.conf.and.covariates$case)
+
+model.lasso = cv.glmnet(x = denoised.mtb, y = cases, alpha = 1, family = 'binomial')
+model.lasso$lambda.1se
+
+model.lasso.fitted = glmnet(x = denoised.mtb, y = cases, 
+                            family = 'binomial', alpha = 1, lambda = model.lasso$lambda.1se)
+
+coeff.lasso = coef(model.lasso.fitted)
+index.of.chosen.lasso = which(coeff.lasso != 0)
+
+#Comparing the indices, it appears that the mtb'ites: 1620 1625 1626 1628 1629 1630 1635
+#
+#are both chosen by the lasso model and significant at the BF level
+
+#Identifying the variables: 
+
+plot(model.lasso$glmnet.fit, "lambda",   label=TRUE)
+
+
 
 #Lasso Model---- FOR VASILIS
 install.packages("glmnet")
