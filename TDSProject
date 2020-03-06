@@ -1,4 +1,263 @@
 
+#Code up tp PLS FOR ADDUCTOMICS--------------------------------------------------------
+library(stringr)
+work_dir<- "/rds/general/user/tm2119/home/TDS_Session2"
+
+#Adductomics cleaning-----
+adm<- readRDS('Adductomics/Adductomics_imputed.rds')
+adm<-as.data.frame(adm)
+
+str(adm)
+dim(adm)
+
+rownames(adm)
+row.adm <- rownames(adm)
+
+row.adm.clean <-gsub("_1$",".1",row.adm)
+row.adm.clean
+row.adm.clean <-gsub("_2$",".2",row.adm.clean)
+row.adm.clean
+row.adm.fin <-gsub(".*_","",row.adm.clean)
+row.adm.fin
+rownames(adm)<-row.adm.fin
+rownames(adm)
+rownames(adm)[65]<-"2224825.3"
+rownames(adm)[66]<-"2224825.4"
+
+rownames(adm)[314]<-"2466652.4"
+rownames(adm)[315]<-"2466652.3"
+rownames(adm)[389]<-"2470231.1"
+rownames(adm)[393]<-"2470381.2"
+
+
+
+
+#LOG TRANSFORM DATA FOR ADDUCTOMICS
+adm.log<-log(adm)
+is.matrix(adm.log)
+head(adm.log)
+str(adm.log)
+
+#Create column Indiv.ID
+adm.log <- cbind(Indiv.ID = rownames(adm.log),adm.log)
+adm.log
+
+#Technical covariates data----
+adm_tc <- readRDS("/rdsgpfs/general/project/hda_tds/live/Mechanomics/Adductomics/Adductomics_technical_covariates.rds")
+adm_tc
+
+
+row.adm.tc <- rownames(adm_tc)
+row.adm.clean.tc <-gsub("_1$",".1",row.adm.tc)
+row.adm.clean.tc
+row.adm.clean.tc <-gsub("_2$",".2",row.adm.clean.tc)
+row.adm.clean.tc
+row.adm.fin.tc <-gsub(".*_","",row.adm.clean.tc)
+row.adm.fin.tc
+row.adm.fin.tc[65]<-"2224825.3"
+row.adm.fin.tc[66]<-"2224825.4"
+row.adm.fin.tc[314]<-"2466652.4"
+row.adm.fin.tc[315]<-"2466652.3"
+row.adm.fin.tc[389]<-"2470231.1"
+row.adm.fin.tc[393]<-"2470381.2"
+row.adm.fin.tc
+rownames(adm_tc)<-row.adm.fin.tc
+rownames(adm_tc)
+dim(adm_tc)
+
+#Create Indiv.ID for adm_tc
+adm_tc<- cbind(Indiv.ID = rownames(adm_tc),adm_tc)
+dim(adm_tc)
+
+#Merge TWO datasets----
+adm.log.tc<-merge(adm.log, adm_tc, by=c("Indiv.ID"))
+dim(adm.log.tc)
+table(is.na(adm.log.tc))
+str(adm.log.tc)
+
+
+#Detect outliers using "solitude"----
+install.packages("solitude")
+library(solitude)
+
+#score close to 1 means outlier, <0.5 means normal obs
+admX <- adm.log[,2:44]
+iso <- isolationForest$new()
+iso$fit(admX)
+print(iso$scores)
+plot(iso$scores)
+# identify outliers by the distribution of score
+quantile(iso$scores$anomaly_score
+         , probs = seq(0, 1, length.out = 11))
+
+
+#PCA Analysis----
+numeric.adm<-adm.log.tc[,2:44]
+pca1<-prcomp(numeric.adm, center = TRUE, scale.=TRUE)
+plot(pca1, type="l")
+
+#USING METHOD FROM TUTORIAL
+ev = with(pca1, pca1$sdev^2/sum(pca1$sdev^2))
+plot(ev, pch = 19, col = "navy", xlab = "# of PCs",
+     ylab = "Proportion of EV", ylim = c(0, 1.2), cex = 0.3) 
+points(cumsum(ev), pch = 19, col = "tomato", cex = 0.3) 
+legend("top", pch = 19, col = c("navy", "tomato"),
+legend = c("EV", "Cumulative EV"), cex = 0.4, horiz = T)
+sum(!cumsum(ev) > 0.9)
+print(pca1$rotation)
+pca1%>%biplot(cex=.6)
+
+
+#Deal with covariates----
+install.packages("ggplot2")
+library(ggplot2)
+library(dplyr)
+cov<-covariates%>%select("gender","case","age.sample","CSI")
+cov
+
+#Create adm.log.tc1 merge 3 datasets----
+cov$EPIC_ID<-rownames(cov)
+head(cov)
+adm.log.tc1<-merge(adm.log.tc,cov,by=c("EPIC_ID"),all.x = TRUE)
+head(adm.log.tc1)
+str(adm.log.tc1)
+#Run PCA---- 
+adm.pca<-adm.log.tc1[,3:45]
+str(adm.pca)
+pca1<-prcomp(adm.pca, center = TRUE, scale.=TRUE)
+plot(pca1, type="l")
+
+#USING METHOD FROM TUTORIAL
+ev = with(pca1, pca1$sdev^2/sum(pca1$sdev^2))
+plot(ev, pch = 19, col = "navy", xlab = "# of PCs",
+     ylab = "Proportion of EV", ylim = c(0, 1.2), cex = 0.3) 
+points(cumsum(ev), pch = 19, col = "tomato", cex = 0.3) 
+legend("top", pch = 19, col = c("navy", "tomato"),
+       legend = c("EV", "Cumulative EV"), cex = 0.4, horiz = T)
+sum(!cumsum(ev) > 0.9)
+print(pca1$rotation)
+pca1%>%biplot(cex=.6)
+
+#Univariate Model---------------------------------------------------------------------
+install.packages("omics")
+suppressPackageStartupMessages(library(omics))
+
+adm_noise<-adm.log[,2:44]
+
+model_univ<-mlmer(adm_noise~(1|EPIC_ID)+(1|Analytical.batch)+(1|Extraction.batch)+(1|Gel.status)+gender+case+age.sample,vars = "case",save.residuals=TRUE, data=adm.log.tc1)
+coeff<-data.frame(model_univ$coefficients)
+sum(p.adjust(coeff$pval, method = "BH") < 0.05)
+sum(p.adjust(coeff$pval, method = "bonf") < 0.05)
+sum(p.adjust(coeff$pval, method = "none") < 0.05)
+#Denoising Data/Mixed Models-----------------------------------------------------------------------------------
+install.packages("omics")
+suppressPackageStartupMessages(library(omics))
+
+adm.only <- adm.log.tc1[,3:45]
+str(adm.only)
+model2<-mlmer(adm.only~(1|Analytical.batch)+(1|Extraction.batch)+(1|Gel.status),save.residuals=TRUE, data=adm.log.tc1)
+model2$coefficients
+X=model2$residuals
+saveRDS(X, "Adductomics/Adductomics_denoised.rds")
+X=readRDS("Adductomics/Adductomics_denoised.rds")
+head(X)
+
+#After denoising data RUN PCA Analysis again----
+X=readRDS("Adductomics/Adductomics_denoised.rds")
+head(X)
+pcaX = prcomp(X, center = TRUE, scale. = TRUE)
+print(pcaX)
+plot(pcaX, type="l")
+ev1 = with(pcaX, pcaX$sdev^2/sum(pcaX$sdev^2))
+plot(ev1, pch = 19, col = "navy", xlab = "# of PCs",
+     ylab = "Proportion of EV1", ylim = c(0, 1.2), cex = 0.3) 
+points(cumsum(ev1), pch = 19, col = "tomato", cex = 0.3) 
+legend("top", pch = 19, col = c("navy", "tomato"),
+       legend = c("EV1", "Cumulative EV1"), cex = 0.4, horiz = T)
+sum(!cumsum(ev1) > 0.9)
+
+print(pcaX$rotation)
+pcaX%>%biplot(cex=.6)                                                                                                                          
+
+#PHEATMAP----
+library(pheatmap)
+str(adm.only)
+adm.only=as.numeric(adm.only)
+mycor=cor(adm[,1:43], use="complete.obs")
+pheatmap(mycor, cluster_cols = FALSE, cluster_rows = FALSE, breaks = seq(-1,1, length.out = 100), show_rownames = FALSE, 
+         show_colnames = FALSE)
+
+
+
+#Lasso Model----
+install.packages("glmnet")
+suppressPackageStartupMessages(library(glmnet))
+X=readRDS("Adductomics/Adductomics_denoised.rds")
+head(X)
+Y<-adm.log.tc1$case
+
+
+plot(density(Y), las = 1, main = "", xlab = "", ylab = "",
+     lwd = 2, col = "navy")
+
+set.seed(1000)
+model.lasso=cv.glmnet(x=X,y=Y, alpha=1,family="binomial")
+model.lasso$lambda.1se
+plot(model.lasso)
+model.lasso.fitted = glmnet(x=X,y=Y,alpha = 1, family = "binomial")
+
+table(coef(model.lasso,s="lambda.1se")[-1]!=0)
+betas=coef(model.lasso, s='lambda.1se')[-1]
+names(betas)=rownames(coef(model.lasso, s='lambda.1se'))[-1]
+plot(betas[betas!=0], type = 'h', col='navy', lwd=3, xaxt='n', xlab='', ylab=expression(beta))
+axis(side = 1, at = 1:sum(betas!=0), labels = names(betas)[betas!=0], las=2)
+abline(h=0, lty=2)
+
+
+#Stability Lasso-----------------
+LassoSub = function(k = 1,Xdata, Ydata) {
+        set.seed(k)
+        s0 = sample(which(adm.log.tc1$case==0), 
+                    size = 0.8 * sum(adm.log.tc1$case==0)) # subsampling controls
+        s1 = sample(which(adm.log.tc1$case==1), 
+                    size = 0.8 * sum(adm.log.tc1$case==1)) # subsampling cases
+        s=c(s0,s1)
+        Xsub = Xdata[s, ]
+        Ysub = Ydata[s]
+        model.sub = cv.glmnet(x = Xsub, y = Ysub, alpha = 1, family="binomial")
+        coef.sub = coef(model.sub, s = "lambda.1se")[-1]
+        return(coef.sub)
+}
+
+niter = 100
+lasso.stab = sapply(1:niter, FUN = LassoSub, 
+                    Xdata = X, Ydata = adm.log.tc1$case)
+
+
+lasso.prop = apply(lasso.stab, 1, FUN = function(x) {
+        sum(x != 0)/length(x)
+})
+names(lasso.prop) = colnames(X)
+
+lasso.prop = sort(lasso.prop, decreasing = TRUE)
+plot(lasso.prop, type = "h", col = "navy",
+     lwd = 3, xaxt = "n", xlab = "", ylab = "Selection proportion",
+     ylim = c(0, 1.05), las = 1)
+text(lasso.prop + 0.07, 
+     labels = names(lasso.prop), 
+     pos = 3, srt = 90, cex = 0.7)
+
+--------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
 #Lasso Model---- FOR VASILIS
 install.packages("glmnet")
 library(glmnet)
