@@ -1,3 +1,17 @@
+NOTES FROM THE MEETING WITH MARC:
+1.	Sensitivity analysis (univariate analysis) for non-imputed and imputed data -be careful of betas and p-values as you are comparing two data where imputed has less observations than non-imputed. (I think we need to do it separately for each proteins)
+2.	Present the proportion of imputed values
+3.	For covariates(smoking) you read literature and you can also do different models by using different smoking indicating variable and compare models
+Also, can subset non-smokers and do analysis to compare with smokers
+4.	QC.Warning showing warning are outliers (remove them)
+5.	For imputation 50% is ok, 70% is too high
+6.	For outlier detection stick to one method
+7.	Join the whole dataset and analyse (histological subtypes for lung cancer)
+You can join OMICS two by two and make analysis
+8.	Don’t remove subclinical effects of the disease
+
+
+
 
 #Code up tp PLS FOR ADDUCTOMICS--------------------------------------------------------
 library(stringr)
