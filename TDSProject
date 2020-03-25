@@ -1047,4 +1047,26 @@ sum(pca.numeric[1:220]) / sum(pca.numeric)
 
 mtb.pca$rotation
 
+# PLS model
+
+devtools::install_github("mixOmicsTeam/mixOmics")
+suppressPackageStartupMessages(library(mixOmics))
+suppressPackageStartupMessages(library(sgPLS))
+library(lme4)
+library(sgPLS)
+library(utils)
+library(pheatmap)
+library(RColorBrewer)
+source("Scripts/pls_functions.R")
+MyPLSDA_pooled <- plsda(X, case, ncomp = 1,
+                        mode = "regression")
+MyPLSDA_pooled$loadings$X
+MysPLSDA_pooled <- splsda(X, case, ncomp=1, mode="regression", keepX=6)
+
+MysPLSDA_pooled$loadings$X
+MysPLSDA_pooled$loadings$X[MysPLSDA_pooled$loadings$X!=0,]
+
+set.seed(1)
+res_splsda=CalibratesPLSDA(dataX=X, dataY=case, ncomp=1, Nrepeat=5)
+PlotCalib(res=res_splsda)
 
