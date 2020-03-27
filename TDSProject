@@ -761,7 +761,6 @@ dim(adm.covar)
 
 
 #Vasilis: Metabolomics + Covars------------------------------------------------------------------------------------------------
-
 # Metabolome Script
 
 # Load Files, Missingness Investigation----
@@ -774,6 +773,7 @@ mtb = read.csv("/rdsgpfs/general/project/hda_tds/live/Mechanomics/Metabolites/Lu
 
 mtb.by.participant = t(as.matrix(mtb))
 
+tech.conf = ("/rdsgpfs/general/project/hda_tds/live/Mechanomics/Metabolites/LC-MS_worklist_LunCan_RPneg.xlsx")
 
 #We fix the ID's of participants in mtb and covar datasets so that we can later join the two sets.
 library(stringr)
@@ -810,8 +810,8 @@ names.metabol.plus295[48]
 # and since it's only 2/650 observations, we'll take the mean wherever there are 2 observations and
 # the observed value where one of them is NA
 
-length(mtb.by.part[rownames(mtb.by.part) == 2106943])
-length(mtb.by.part[rownames(mtb.by.part) == 2103767])
+dim(mtb.by.part[rownames(mtb.by.part) == 2106943,])
+dim(mtb.by.part[rownames(mtb.by.part) == 2103767,])
 
 vector.2106943 = matrix(as.numeric(mtb.by.part[rownames(mtb.by.part) == 2106943,]), byrow = F, nrow = 2)
 vector.2106943[1:2, 120:130]
@@ -861,21 +861,21 @@ dim(mtb.by.part3)
 # Firstly, we will be excluding those metabolites for whom >70% of the values are missing
 mtb.NAs = ifelse(is.na(mtb.by.part3) == T, 1, 0)
 
-na.proportion.vector = apply(mtb.NAs, 1, mean)
+na.proportion.vector = apply(mtb.NAs, 2, mean)
 
 hist(na.proportion.vector,breaks = 1000)
 # DATA-DRIVEN choice of cut-off: 0.65
 
-mtb.lessthan60 = mtb.by.part3[which(na.proportion.vector < 0.6),]
-dim(mtb.lessthan65)
-  
+mtb.lessthan30 = mtb.by.part3[,which(na.proportion.vector < 0.3)]
+dim(mtb.lessthan30)
+
 # In the remaining dataset, we will be treating missing or not as a binary outcome 
 # 
 # and run logistic regression as follows: missingness ~ age + gender + BMI + ...
 #
 # We will accordingly correct for multiple comparisons
 linearmod.NAs = function(metabolite.missing){
-  mod1 = glm(metabolite.missing ~ covar$age.sample + covar$case + covar$cohort ,
+  mod1 = glm(metabolite.missing ~ covariates$age.sample + covariates$case + covariates$cohort ,
              family = binomial())
   summa = summary(mod1)
   age.pval = summa$coefficients[2,4]
@@ -895,11 +895,12 @@ apply(pvalues, 2, function(x){min(p.adjust(x, method = 'BH'))})
 # Strategy: "QRILC, a missing data imputation method that performs the imputation
 # of left-censored missing data using random draws from a truncated distribution with parameters
 # estimated using quantile regression"
-install.packages("BiocManager")
+
+#install.packages("BiocManager")
 library(BiocManager)
-BiocManager::install("pcaMethods")
+#BiocManager::install("pcaMethods")
 library(pcaMethods)
-BiocManager::install("impute")
+#BiocManager::install("impute")
 library(impute)
 
 install.packages('imputeLCMD')
@@ -907,7 +908,10 @@ library(imputeLCMD)
 
 #We ASSUME that the data is NOT log-transformed
 
-mtb.numeric = matrix(as.numeric(mtb.by.part3), nrow(mtb.by.part3))
+mtb.numeric = matrix(as.numeric(mtb.lessthan30), nrow(mtb.lessthan30))
+rownames(mtb.numeric) = rownames(mtb.by.part3)
+rownames(mtb.numeric)[647:648] = c('2106943','2103767')
+
 
 num.mat.1 = mtb.numeric
 num.mat.ln = log(num.mat.1)
@@ -918,11 +922,11 @@ imp.mtb = impute.QRILC(mtb.numeric)
 # We get the source code and try to see what's going on. 
 
 #The issue was that nFeatures and nSamples were switched
-
+set.seed(10-2-2020)
 tune.sigma = 1
-nFeatures = dim(num.mat)[2]
-nSamples = dim(num.mat)[1]
-dataSet.imputed = num.mat
+nFeatures = dim(num.mat.ln)[2]
+nSamples = dim(num.mat.ln)[1]
+dataSet.imputed = num.mat.ln
 QR.obj = list()
 for (i in 1:(nSamples)) {
   curr.sample = num.mat.ln[i, ]
@@ -944,129 +948,341 @@ for (i in 1:(nSamples)) {
 
 num.mat.imputed = dataSet.imputed
 
+rownames(num.mat.imputed) = rownames(mtb.by.part3)
+
+write.csv(num.mat.imputed, 'imputed_with_only_CCA_21_3_2020.csv')
+
 # Visual inspection of histograms suggests that undetected values
 # have been imputed at low ranges. 
-hist(num.mat.imputed[,48],breaks = 100)
-hist(num.mat[,48],breaks = 100)
+hist(num.mat.imputed[,358],breaks = 100)
+hist(num.mat.ln[,358],breaks = 100)
 
-#We backtransform to linear scale
-metabolites.imp = exp(num.mat.imputed)
-range(as.numeric(mtb.by.part3[,26]),na.rm = T)
+#We DO NOT backtransform to linear scale. Negative values are FINE and it would skew the distribution
+#metabolites.imp = exp(num.mat.imputed)
+metabolites.imp = num.mat.imputed
+rownames(metabolites.imp) = rownames(num.mat.ln)
 
 
 # Univariate Regression with significance corrections ----
-metabolites.imp
+library(openxlsx)
+metabolites.imp = dataSet.imputed
 
-# Treating lung cancer cases as the binary outcome, we code a function (linearmod) that sequentially checks
-# every metabolite for significance
+#BEFORE doing univar, we will be denoising the data
 
-linearmod = function(x.indep){
-  mod1 = glm(as.numeric(covar[, "case"]) ~ x.indep, family = binomial())
-  summa = summary(mod1)
-  return(summa$coefficients[2,4])
-}
+#We load the file
+tech.conf = '/rdsgpfs/general/project/hda_tds/live/Mechanomics/Metabolites/LC-MS_worklist_LunCan_RPneg.xlsx'
 
-#Extraction of p-values for all the univariate analyses
-#of cancer ~ metabolite1, cancer ~ metabolite2 etc.
+tech.confounders = read.xlsx(tech.conf)
 
-pvalues = apply(metabolites.imp, 2, linearmod)
-pval.log = -log(pvalues)/log(10)
-plot(pval.log,ylim = c(0,4))
+metabolites.imp.df = as.data.frame.matrix(metabolites.imp)
 
-#Bonferroni correction
-bonferroni.cutoff = 0.05/ncol(metabolites.imp)
-plot.bonf = -log(bonferroni.cutoff)
-abline(h=plot.bonf, col = 'red')
+metabolites.imp.df$Sample.Name = rownames(metabolites.imp.df)
 
-#Benjamini-Hochberg Procedure
-pval.BH = p.adjust(pvalues, method = "BH") # None significant at 0.05
+mtb.and.tech.conf = merge(metabolites.imp.df, tech.confounders, by = 'Sample.Name')
 
-sum(pval.BH < 0.05) # NONE !!!!
-range(pval.BH) # W O W. Range of BH-corrected pvals is 0.9896816 0.9997920
+duplicated(mtb.and.tech.conf$Sample.Name)
+#287, 335
 
-#Let's try adjusting for Smoking Status
-linearmod.adj.for.Smoking = function(x.indep){
-  mod1 = glm(as.numeric(covar[, "case"]) ~ x.indep + covar$smoking_status, family = binomial())
-  summa = summary(mod1)
-  return(summa$coefficients[2,4])
-}
+mtb.tech.648 = mtb.and.tech.conf[- c(287, 335),]
 
-#Again, pvalue extraction
-pvalues = apply(metabolites.imp, 2, linearmod.adj.for.Smoking)
-pval.log = -log(pvalues)/log(10)
-plot(pval.log,ylim = c(0,4))
+#Proper way to denoise
+suppressPackageStartupMessages(library(omics))
 
-#Bonferroni correction
-bonferroni.cutoff = 0.05/ncol(metabolites.imp)
-plot.bonf = -log(bonferroni.cutoff)
-abline(h=plot.bonf, col = 'red')
+metabolites.only = mtb.tech.648[, 2:1533]
 
-#Benjamini-Hochberg Procedure
-pval.BH = p.adjust(pvalues, method = "BH") # None significant at 0.05
+rownames(metabolites.only) = mtb.tech.648$Sample.Name
 
-sum(pval.BH < 0.05) # NONE AGAIN !!!!
-range(pval.BH) # Range of BH-corrected pvals is now 0.9529 0.9997920
+#Merging covariate df with metabolite df
+merged.df = merge(covariates, mtb.tech.648, by = 'Sample.Name')
 
-#Let's try adjusting for Smoking Duration AND age 
-linearmod.adj.for.Smoking = function(x.indep){
-  mod1 = glm(as.numeric(covar[, "case"]) ~ x.indep + covar$packyears + covar$Monocytes + covar$bmi + covar$B+covar$Gel.status, family = binomial())
-  summa = summary(mod1)
-  return(summa$coefficients[2,4])
-}
+covariates$Sample.Name = rownames(covariates)
 
-#Again, pvalue extraction
-pvalues = apply(metabolites.imp, 2, linearmod.adj.for.Smoking)
-pval.log = -log(pvalues)/log(10)
-plot(pval.log,ylim = c(0,4))
+rownames(merged.df) = rownames(metabolites.only)
 
-#Bonferroni correction
-bonferroni.cutoff = 0.05/ncol(metabolites.imp)
-plot.bonf = -log(bonferroni.cutoff)
-abline(h=plot.bonf, col = 'red')
+#For the script version, the following excludes the possibility of non-aligned data
+#Data are aligned! 
 
-#Benjamini-Hochberg Procedure
-pval.BH = p.adjust(pvalues, method = "BH") # None significant at 0.05
+#stopifnot(rownames(metabolites.only) == merged.df$Sample.Name)
 
-sum(pval.BH < 0.05) # NONE AGAIN !!!!
+#UNIVARIATE ANALYSIS
+model.univariate = mlmer(metabolites.only ~ case + age.sample + gender + (1 | merged.df$Plate),
+                  vars = 'case', data=merged.df, save.residuals = TRUE)
 
-range(pval.BH) # Range of BH-corrected pvals is now ↓ 0.86855 0.9997920
+pvalues.from.univariate = model.univariate$coefficients[,c(1,3)]
+
+log.pval = -log(pvalues.from.univariate)/log(10)
+
+plot(log.pval)
+
+p.univar.bonferroni = - log((0.05/ncol(metabolites.imp))) / log(10)
+
+abline(h = p.univar.bonferroni, col = 'red')
+
+which(log.pval > p.univar.bonferroni)
+
+#Different smoking measurement
+
+# a) Smoking duration
+na.smok_dur = which(is.na(merged.df$smok_duration))
+mtb.smok.dur = metabolites.only[-c(na.smok_dur),]
+
+model.univariate.smok.int = mlmer(mtb.smok.dur ~ case + smok_duration + age.sample + gender + (1 | Plate),
+                         vars = 'case', data=merged.df[-c(na.smok_dur),], save.residuals = TRUE)
+
+pvalues.from.univariate.smok.int = model.univariate.smok.int$coefficients[,c(1,3)]
+
+log.pval.smok.int = -log(pvalues.from.univariate.smok.int)/log(10)
+
+plot(log.pval.smok.int)
+
+p.univar.bonferroni.smok.int = - log((0.05/ncol(metabolites.imp))) / log(10)
+
+abline(h = p.univar.bonferroni.smok.int, col = 'red')
+
+which(log.pval.smok.int > p.univar.bonferroni)
+
+# b) Smoking status
+
+na.smok_status = which(is.na(merged.df$smoking_status))
+mtb.smok_status = metabolites.only[-c(na.smok_status),]
+
+model.univariate.smok.status = mlmer(mtb.smok_status ~ case + smoking_status + age.sample + gender + (1 | Plate),
+                                  vars = 'case', data=merged.df[-c(na.smok_status),], save.residuals = TRUE)
+
+pvalues.from.univariate.smok.status = model.univariate.smok.status$coefficients[,c(1,3)]
+
+log.pval.smok.status = -log(pvalues.from.univariate.smok.status)/log(10)
+
+plot(log.pval.smok.status)
+
+p.univar.bonferroni.smok.int = - log((0.05/ncol(metabolites.imp))) / log(10)
+
+abline(h = p.univar.bonferroni.smok.int, col = 'red')
+
+which(log.pval.smok.status > p.univar.bonferroni)
+#1143 1145 persist
+
+# c) Smoking status
+
+na.smok_int = which(is.na(merged.df$smok_intensity))
+mtb.smok_int = metabolites.only[-c(na.smok_int),]
+
+model.univariate.smok.status = mlmer(mtb.smok_int ~ case + smok_intensity + age.sample + gender + (1 | Plate),
+                                     vars = 'case', data=merged.df[-c(na.smok_int),], save.residuals = TRUE)
+
+pvalues.from.univariate.smok.status = model.univariate.smok.status$coefficients[,3]
+
+log.pval.smok.status = -log(pvalues.from.univariate.smok.status)/log(10)
+
+plot(log.pval.smok.status)
+
+p.univar.bonferroni.smok.int = - log((0.05/ncol(metabolites.imp))) / log(10)
+
+abline(h = p.univar.bonferroni.smok.int, col = 'red')
+
+which(log.pval.smok.status > p.univar.bonferroni)
+#1143 1145 persist
+
+path.results = '/rdsgpfs/general/user/vk1019/home/Metabolomics/Metabolomics_script_2122020/19_3'
+
+#$$$$$$$$$$$$$$$$$$$$$$$$$$ DENOISING $$$$$$$$$$$$$$$$$$$$$$$$$$
+
+#PROPER MODEL FOR DENOISING. WE CANT LOSE THE BETWEEN INDIVIDUAL VARIABILITY ON MTB'ITES AS THIS
+#WOULD MASK THE CASE CONTROL DIFF'S. THE RESIDUALS FROM THIS SHOULD BE USED FOR LASSO!!!!!!!
+
+model.mtb = mlmer(metabolites.only ~ age.sample + gender + (1 | merged.df$Plate),
+                  vars = 'case', data=merged.df, save.residuals = TRUE)
 
 
+denoised.mtb = model.mtb$residuals
 
+#Lasso
+library(glmnet)
 
+model.lasso = cv.glmnet(denoised.mtb, merged.df$case, alpha=1, family = 'binomial')
 
+jpeg("lasso_plot.jpg")
+plot(model.lasso)
+dev.off()
+
+lambda_1se = model.lasso$lambda.1se
+model.lasso.fit = glmnet(denoised.mtb, merged.df$case, alpha=1, family='binomial',
+                         lambda = lambda_1se)
+
+which(as.numeric(model.lasso.fit$beta) != 0)
+#Only 3. 1143 1145 1146. Also in univariate analysis.
 
 # Multivariate Approaches ----
 
 # 1. PCA
+library(factoextra)
+install.packages('ggfortify')
+library(ggfortify)
+
+pca_mtb = prcomp(mtb_denoised,scale. = T, center = T)
+m =ggbiplot::ggbiplot(pca_mtb)
+m + theme_classic()
+
+pca_add = prcomp(Adductomics_denoised, scale. = T)
+a = ggbiplot::ggbiplot(pca_add)
+a + theme_classic()
+
+pca_pr = prcomp(proteins_denoised, scale. = T)
+f = ggbiplot::ggbiplot(pca_pr)
+f + theme_classic()
+
+
+rownames(metabolites.imp)[647:648] = c("2106943", "2103767")
+
+rownames(metabolites.imp) = as.numeric(rownames(metabolites.imp))
+
 mtb.pca = prcomp(metabolites.imp, center = T, scale. = T)
 
 pca.numeric = unlist(mtb.pca[1])
-sum(pca.numeric[1:220]) / sum(pca.numeric)
+sum(pca.numeric[1:3]) / sum(pca.numeric)
 
 
-mtb.pca$rotation
+biplot(mtb.pca, choices = 1:2, scale = 1, pc.biplot = FALSE)
 
-# PLS model
+autoplot(prcomp(metabolites.imp))
 
-devtools::install_github("mixOmicsTeam/mixOmics")
-suppressPackageStartupMessages(library(mixOmics))
-suppressPackageStartupMessages(library(sgPLS))
-library(lme4)
-library(sgPLS)
-library(utils)
+#PLS
+
+#Non-penalised PLS-DA: We don't calibrate. spls: we calibrate sparsity. 
+#gpls: we calibrate sparsity and group.
+
+install.packages('caret')
+library(caret)
+
+install.packages('spls')
+library(spls)
+
+cv <- cv.spls(metabolites.imp, covar$age.sample, eta = seq(0.1,0.9,0.1), K = c(5:10) )
+
+f <- spls(metabolites.imp, covar$age.sample, eta = cv$eta.opt, K = cv$K.opt )
+
+f$projection
+
+#Calibrating sparsity, the value chosen is 0.2
+
+dim(metabolites.imp)
+
+#Subsample: sample with replacement multiple times and repeat the model
+
+#Selection proportion plot for subsamples of cancer cases? 
+
+#Data-drive Group PLS approach
+
+#Correlation matrix
+cormat <- round(cor(metabolites.imp),2)
+library(reshape2)
+melted_cormat <- melt(cormat)
+
+library(ggplot2)
+ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile()
+
+#Better corr matrix
+install.packages('pheatmap')
 library(pheatmap)
-library(RColorBrewer)
-source("Scripts/pls_functions.R")
-MyPLSDA_pooled <- plsda(X, case, ncomp = 1,
-                        mode = "regression")
-MyPLSDA_pooled$loadings$X
-MysPLSDA_pooled <- splsda(X, case, ncomp=1, mode="regression", keepX=6)
+dim(metabolites.imp)
 
-MysPLSDA_pooled$loadings$X
-MysPLSDA_pooled$loadings$X[MysPLSDA_pooled$loadings$X!=0,]
+mycor=cor(metabolites.imp, use="complete.obs")
+pheatmap(mycor, cluster_cols = FALSE, cluster_rows = FALSE, breaks = seq(-1,1, length.out = 100), show_rownames = FALSE, 
+         show_colnames = FALSE)
 
-set.seed(1)
-res_splsda=CalibratesPLSDA(dataX=X, dataY=case, ncomp=1, Nrepeat=5)
-PlotCalib(res=res_splsda)
+# Visually, we could cut at a height such that there are 5 clusters of mtb's
 
+pca.denoised = prcomp(denoised.mtb, center = T, scale. = T)
+pca.noised = prcomp(metabolites.imp)
+par(mfrow = c(1,2))
+plot(pca.denoised)
+plot(pca.noised)
+
+
+get_eigenvalue(pca.denoised) #!!!!!!!! THIS SAYS HOW MANY WE NEED TO EXPLAIN x% of the variance
+get_eigenvalue(pca.noised)
+
+#PCA and outliers----
+dim(denoised.mtb)
+
+library(ggfortify)
+#Outlier Detection----
+#1. PCA
+#We plot PC's and color with different colours before and after denoising
+#Before Denoising
+noised.mtb.with.plate = cbind(metabolites.only, Plate = as.factor(mtb.tech.648$Plate))
+df.noise = noised.mtb.with.plate[,1:4828]
+autoplot(prcomp(df.noise), data=noised.mtb.with.plate, colour = 'Plate')
+
+#After Denoising
+denoised.mtb.with.plate = as.data.frame.matrix(cbind(denoised.mtb, 
+                                                     Plate = as.factor(mtb.tech.648$Plate)))
+df.denoised = denoised.mtb.with.plate[,1:4828]
+autoplot(prcomp(df), data=denoised.mtb.with.plate, colour = 'Plate')
+#There are some outliers, no apparent difference in colour
+
+
+
+#2. Isolation Forest
+library(solitude)
+
+iso <- isolationForest$new()
+iso$fit(df.denoised)
+
+hist(iso$scores[,3])
+
+df.without.IF.outliers = df.denoised[-which(iso$scores[,3] > 0.5),]
+
+#We do PCA again to see what effect the exclusion of IF outliers had
+autoplot(prcomp(df.without.IF.outliers))
+
+#Significant effect! We further lower the threshold
+df.without.IF.outliers.at.0.4 = df.denoised[-which(iso$scores[,3] > 0.38),]
+autoplot(prcomp(df.without.IF.outliers.at.0.4))
+
+#Homogeneous
+
+#First, we examine the characteristics of the excluded participants
+df.denoised.with.outlier.vector = cbind(df.denoised, iso$scores[,3])
+
+#We construct a new dataset and run the univariate analysis again
+model.mtb = mlmer(metabolites.imp ~ case + age.sample + gender + (1 | merged.df$Plate),
+                  vars = 'case', data=merged.df, save.residuals = TRUE)
+length(covar$case)
+
+head(apply(df.without.IF.outliers.at.0.4, 2, is.numeric))
+
+df.without.IF.outliers.at.0.4$Indiv.ID = rownames(df.without.IF.outliers.at.0.4)
+
+df.without.IF.outliers.and.with.cc.status = merge(df.without.IF.outliers.at.0.4, 
+                                                  covar, by = 'Indiv.ID')
+
+#PCA with colored CC status
+df.denoised.no.outliers = df.without.IF.outliers.and.with.cc.status[,2:4828]
+autoplot(prcomp(df.denoised.no.outliers), 
+         data=df.without.IF.outliers.and.with.cc.status, 
+         colour = 'case')
+#Significant overlap, no apparent discrimination
+
+#PLS----
+#install.packages('mixΟmics')
+
+#install.packages('sgPLS')
+suppressPackageStartupMessages(library(sgPLS))
+
+suppressPackageStartupMessages(library(pheatmap))
+suppressPackageStartupMessages(library(RColorBrewer))
+suppressPackageStartupMessages(library(utils))
+suppressPackageStartupMessages(library(pheatmap))
+suppressPackageStartupMessages(library(mixΟmics))
+
+mixOmics
+
+
+#TTD as an outcome. only the sifniciant metabolites in the independent variables
+
+#PCA for metabolomics to reduce
+
+
+prcomp()
