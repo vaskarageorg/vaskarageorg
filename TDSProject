@@ -1112,29 +1112,34 @@ model.lasso.fit = glmnet(denoised.mtb, merged.df$case, alpha=1, family='binomial
 which(as.numeric(model.lasso.fit$beta) != 0)
 #Only 3. 1143 1145 1146. Also in univariate analysis.
 
-#!!!!! 30/3 !!!!
+#!!!!! 31/3 !!!!
 #Choice of some features for further multi-omics analysis
 #CAUTION: i've used lung cancer as an outcome so it's very very likely that this is wrong.
 #I can't see how choice of another outcome would be relevant, as eg. if we chose age or whatever
 #we might as well miss the important mtb'ites.s
+merged.df$smoking_status01 = ifelse(merged.df$smoking_status == 'Current',
+                                    1, 0 )
 
-model.lasso = cv.glmnet(denoised.mtb, merged.df$case, alpha=1, family = 'binomial')
+model.lasso = cv.glmnet(denoised.mtb[which(!is.na(merged.df$smoking_status)),], 
+                        merged.df$smoking_status01[which(!is.na(merged.df$smoking_status))], 
+                        alpha=1, family = 'binomial')
 
 jpeg("lasso_plot.jpg")
 plot(model.lasso)
 dev.off()
 
-#Choice of lambda + 1 SE arbitrarily
+#Choice of lambda + 1 SE
 lambda_for_merging = model.lasso$lambda.1se - model.lasso$lambda.min
 
 #lambda_1se = model.lasso$lambda.1se
 
-model.lasso.fit = glmnet(denoised.mtb, merged.df$case, alpha=1, family='binomial',
+model.lasso.fit = glmnet(denoised.mtb[which(!is.na(merged.df$smoking_status)),], 
+                         merged.df$smoking_status01[which(!is.na(merged.df$smoking_status))], 
+                         alpha=1, family='binomial',
                          lambda = lambda_for_merging)
 
 mtb_denoised_for_merging = denoised.mtb[,which(as.numeric(model.lasso.fit$beta) != 0)]
 write.csv(mtb_denoised_for_merging, 'mtb_denoised_for_merging.csv')
-
 
 # Multivariate Approaches ----
 
