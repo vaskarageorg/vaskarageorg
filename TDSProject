@@ -1315,3 +1315,17 @@ mixOmics
 
 
 prcomp()
+
+#### save dataset
+
+path.1 = '/rdsgpfs/general/project/hda_tds/live/Mechanomics/Adductomics/'
+
+setwd(path.1)
+
+saveRDS(joindata, 'joindata.RDS')
+# data splitting
+dt = sort(sample(nrow(joindata), nrow(joindata)*.7))
+train<-joindata[dt,]
+test<-joindata[-dt,]
+
+
